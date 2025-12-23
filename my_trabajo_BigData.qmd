@@ -1,0 +1,339 @@
+---
+title: "La inflación no mola"
+description: |
+  Estudio como la Inflación afecta a algunos países de Europa, a qué productos nos afecta y comparo con la media europea.
+author:
+  - name: Abel Guarinos Marin
+    affiliation: Universitat de València
+    affiliation-url: https://www.uv.es
+date: 2025-12-20                           #--
+categories: [trabajo BigData, Inflación Italia]   #--
+image: "./imagenes/imagen_01.png"
+title-block-banner: true #- {true, false, "green","#AA0000"}
+title-block-banner-color: "orange"    #-"#FFFFFF" 
+toc-depth: 3
+smooth-scroll: true
+format: 
+  html:
+    #backgroundcolor: "#377EB8"
+    #embed-resources: true
+    link-external-newwindow: true
+    #css: assets/my_css_file.css   #- CUIDADO!!!!
+code-tools: true
+code-link: true
+
+---
+
+
+## 0. Introducción
+
+```{r}
+#| label: carga-datos-eurostat
+#| warning: false
+#| message: false
+#| echo: false       
+#| output: false
+
+library(eurostat)
+
+my_tema <- "inflation"
+aa <- eurostat::search_eurostat(pattern = my_tema, type = "all")
+
+#- Cojo "tec00118" porque es la Tasa de Inflación - Variación anual promedio
+
+my_table <- "tec00118"
+
+eurostat::label_eurostat_tables(my_table)
+
+df_inflacion <- eurostat::get_eurostat(my_table, time_format = "raw", keepFlags = TRUE)
+
+df_inflacion_l <- eurostat::label_eurostat(df_inflacion)
+
+```
+
+He cogido datasets relacionados con la inflación porque desde hace años una de cada dos noticias de la tele són de la Inflación. Así que me he preguntado cómo ha afectado a los países europeos y de qué forma, es decir, si a todos por igual o si entre los países más desarrollados y menos desarrollados hay diferencias muy notables.
+
+---
+
+## 1. Comparación Evolutiva de Europa con España e Italia.
+
+
+```{r}
+#| echo: false
+#| label: grafico-lineas-interactivo
+#| warning: false
+#| message: false
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+df_grafico <- df_inflacion %>%
+
+  rename_with(tolower) %>%
+  rename(time = any_of("time_period")) %>%
+
+  mutate(time = as.numeric(as.character(time))) %>%
+  
+  filter(geo %in% c("ES", "IT", "EU27_2020")) %>%
+  
+  eurostat::label_eurostat(fix_duplicated = TRUE)
+
+p <- ggplot(df_grafico, aes(x = time, y = values, color = geo)) +
+  geom_line(size = 2) +
+  geom_point(size = 4) +
+  labs(
+    title = "Evolución de la Inflación Anual",
+    x = "Año",
+    y = "Tasa de variación (%)",
+    color = "Región"
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") + 
+  theme(legend.position = "bottom")
+
+ggplotly(p, height = 500) %>%
+  layout(legend = list(orientation = "h", x = 0.3, y = -0.2))
+
+```
+
+En el gráfico de líneas podemos observar la evolución de la tasa de inflación anual comparando diferentes regiones. He utilizado España (porque es donde estamos), Italia (porque tengo un trabajo en Macoeconomia Internacional y puedo aprovechar la gráfica) y la media Europea.
+
+---
+
+## 2. Mapa Visual de la Zona Euro
+
+Vamos a visualizar la distribución geográfica de la inflación en el año **2023**. Los colores más claros/amarillos indican mayor inflación, mientras que los oscuros indican menor inflación.
+
+```{r}
+#| label: mapa-coropletas
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(sf)        
+library(eurostat)
+
+mapa_europa <- eurostat::get_eurostat_geospatial(resolution = "60", nuts_level = 0)
+
+datos_mapa <- df_inflacion %>%
+  rename_with(tolower) %>%
+  rename(time = any_of("time_period")) %>%
+  mutate(time = as.numeric(as.character(time))) %>%
+  filter(time == 2023)
+
+mapa_completo <- mapa_europa %>%
+  left_join(datos_mapa, by = "geo")
+#mapa
+ggplot(mapa_completo) +
+  geom_sf(aes(fill = values), color = "white", size = 0.1) +
+  
+  scale_fill_viridis_c(option = "plasma", name = "Inflación (%)", na.value = "grey90") +
+  
+  coord_sf(xlim = c(-20, 45), ylim = c(34, 72)) +
+  
+  labs(
+    title = "Mapa de Inflación en Europa",
+    subtitle = "2023",
+    caption = "(PD: Las zonas grises no consigo los datos)"
+  ) +
+  theme_void() + 
+  theme(legend.position = "right")
+
+```
+
+De esta forma más visual, con el mapa de coropletas, vemos las zonas donde hay más problemas. Resalta Turquía con una inflación muy elevada, que comparada con la economía europea, llegó a funcionar como un "escudo" que logró mantener los precios mientras fuera se disparaban. (He cogido el 2023 porque se ve más claro y hay más variedad de colores que en el 2024).
+
+---
+
+```{r}
+#| label: limpieza-general
+#| warning: false
+#| message: false
+#| echo: false
+
+#Arreglo los datos
+
+df <- df_inflacion %>%
+  rename_with(tolower) %>%
+  
+  rename(time = any_of("time_period")) %>%
+  
+  mutate(time = as.numeric(as.character(time))) %>%
+  
+  filter(!is.na(values))
+```
+
+
+---
+
+## 3. Visitémos la Inflación en Luxemburgo
+
+```{r}
+#| label: grafico-luxemburgo
+
+df_lux <- df %>% 
+  filter(geo == "LU")
+
+p <- ggplot(data = df_lux, 
+       mapping = aes(x = time, y = values)) +
+  
+  geom_line(color = "orange", size = 1) +
+  geom_point(size = 2, color = "darkblue") +
+  
+  geom_hline(yintercept = 2, linetype = "dashed", color = "green", alpha = 0.7) +
+  annotate("text", x = min(df_lux$time), y = 2.5, label = "Objetivo BCE (2%)", color = "green", size = 3, hjust = 0) +
+  
+  labs(
+    title = "Evolución de la Inflación en Luxemburgo",
+    subtitle = "Objetivo de estabilidad de precios (2%)",
+    x = "Año",
+    y = "Tasa de variación (%)"
+  ) +
+  theme_minimal()
+
+p
+```
+
+En esta parte he querido resaltar a Luxemburgo, ya que es la referencia de mejor país Europeu por varios factores cómo su alto nivel de vida, su sistema financiero sólido y su estabilidad política. Así que cuando veníamos de una década en Luxemburgo donde los precios ni se inmutaban, vimos que de repente se dispararon, aunque ahora han vuelto a su ritmo normal.
+
+---
+
+## 4. Componentes de la Inflación 
+
+En este gráfico he querido separar la inflación de España por componentes.
+
+```{r}
+#| label: grafico-areas-apiladas
+#| warning: false
+#| message: false
+#| output: false
+
+library(dplyr)
+library(ggplot2)
+library(eurostat)
+
+df_componentes <- eurostat::get_eurostat("prc_hicp_manr", time_format = "num")
+
+df_area <- df_componentes %>%
+  rename_with(tolower) %>%
+  
+  rename(time = any_of("time_period")) %>% 
+
+  filter(
+    geo == "ES",               #- Elijo España
+    time >= 2018,              #- Filtro desde 2018
+    coicop %in% c("NRG",       #- Energía
+                  "FOOD",      #- Alimentos
+                  "SERV",      #- Servicios
+                  "IGD_NNRG")  #- Bienes industriales
+  ) %>%
+  mutate(componente = case_when(
+    coicop == "NRG" ~ "Energía",
+    coicop == "FOOD" ~ "Alimentos",
+    coicop == "SERV" ~ "Servicios",
+    coicop == "IGD_NNRG" ~ "Bienes Ind.",
+    TRUE ~ coicop
+  ))
+
+```
+
+
+```{r}
+#| label: grafico-areas-apiladas-2
+#| warning: false
+#| message: false
+
+ggplot(data = df_area, aes(x = time, y = values, fill = componente)) +
+  geom_area(alpha = 0.8, color = "white", size = 0.2) +
+  
+  scale_fill_manual(values = c(
+    "Energía" = "#E41A1C",      
+    "Alimentos" = "#4DAF4A",    
+    "Servicios" = "#377EB8",    
+    "Bienes Ind." = "#FF7F00"   
+  )) +
+  
+  labs(
+    title = "Contribución de los productos quotidianos a la Inflación (España)",
+    subtitle = "(Gráfico de Áreas Apiladad)",
+    x = "Año",
+    y = "Tasa de variación (%)",
+    fill = "Componente"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+Lo que he querido expresar/plasmar es el "efecto dominó" de los productos que normalmente usamos a diario en la inflación en España. Es decir, cómo la explosión inicial de los precios de la energía acabó atacando a los alimentos, y posteriormente contagiando a los servicios. Actualmente, vemos que la cesta de la compra ha crecido (y es más cara). No obstante, la luz y el combustible ya han disminuido parcialmente.
+
+---
+
+## 5. Mapa de Calor
+
+```{r}
+#| label: grafico-heatmap
+#| warning: false
+#| message: false
+
+df_heatmap <- df %>%
+  filter(!geo %in% c("EU27_2020", "EA20", "EA19")) %>%
+  eurostat::label_eurostat()
+
+ggplot(df_heatmap, aes(x = time, y = geo, fill = values)) +
+  geom_tile(color = "white", size = 0.2) + 
+  
+  scale_fill_viridis_c(option = "inferno", name = "Inflación (%)") +
+  
+  scale_x_continuous(breaks = unique(df_heatmap$time)) + 
+  labs(
+    title = "Mapa de Calor",
+    subtitle = "Comparo la intensidad de la Inflación en Europa",
+    x = "Año",
+    y = "País"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 7),
+    panel.grid = element_blank() 
+  )
+```
+
+Es impactante ver cómo el mapa de calor pasa de la calma absoluta a encenderse de golpe en 2022, reflejando justo el momento en que la guerra en Ucrania y la crisis energética hicieron que los precios se dispararan en toda Europa a la vez.
+
+---
+
+## 6. Imagen Euro
+
+```{r}
+#| echo: false
+my_url <- "https://www.c2rp.fr/sites/default/files/thumbnails/image/c2rp-visuel-fse2021-2027.jpg"
+```
+
+![Euros (los necesito porque estoy sin blanca)](https://www.c2rp.fr/sites/default/files/thumbnails/image/c2rp-visuel-fse2021-2027.jpg)
+
+---
+
+<br>
+
+Con esto acabo mi trabajo para BigData!!
+
+<br>
+
+----------------------
+
+<br>
+
+###
+
+Abajo muestro mi entorno de trabajo y paquetes utilizados
+
+```{r}
+#| echo: false
+sessioninfo::session_info() %>% 
+  details::details(summary = 'current session info') 
+```
+
+
+
